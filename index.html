@@ -36,9 +36,12 @@
         .img-preview-container img { width: 80px; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd; }
         .img-preview-container span { font-size: 0.9em; color: #28a745; font-weight: 600; }
 
-        .filter-group { display: flex; gap: 10px; margin-top: 15px; }
+        .filter-group { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; align-items: center; }
         .filter-btn { background: #e9ecef; color: #495057; border: 1px solid #ced4da; padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 0.9em; }
         .filter-btn.active { background: #007bff; color: white; border-color: #007bff; }
+
+        .btn-delete-sold { background: #dc3545; color: white; border-radius: 20px; padding: 6px 14px; font-size: 0.9em; border: none; }
+        .btn-delete-sold:hover { background: #bd2130; }
 
         .category-header { background: #e9ecef; padding: 8px 15px; border-radius: 8px; font-weight: bold; margin-top: 20px; color: #495057; display: flex; justify-content: space-between; align-items: center; }
         .item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; margin-top: 10px; }
@@ -128,13 +131,14 @@
     </div>
 
     <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <h3 style="margin: 0;">🛍️ คลังสินค้า (กดที่รูปเพื่อขายออก / คิดเงิน)</h3>
             
             <div class="filter-group">
                 <button class="filter-btn active" id="filter-all" onclick="setFilter('all')">ทั้งหมด</button>
                 <button class="filter-btn" id="filter-sold" onclick="setFilter('sold')">ขายแล้ว ❌</button>
                 <button class="filter-btn" id="filter-available" onclick="setFilter('available')">คงเหลือ 📦</button>
+                <button class="btn-delete-sold" onclick="deleteAllSoldItems()">🗑️ ลบที่ขายแล้วทั้งหมด</button>
             </div>
         </div>
 
@@ -323,7 +327,7 @@
             };
             tx.oncomplete = () => resolve();
         });
-        loadData();
+        loadData(true); // ส่ง true เพื่อรักษารักษาตำแหน่ง Scroll
     }
 
     async function deleteItem(id, event) {
@@ -336,8 +340,43 @@
                 store.delete(id);
                 tx.oncomplete = () => resolve();
             });
-            loadData();
+            loadData(true);
         }
+    }
+
+    // ฟังก์ชันลบสินค้าที่ขายแล้วทั้งหมดเฉพาะของวันที่เลือก
+    async function deleteAllSoldItems() {
+        const date = getSelectedDate();
+        const database = await initDB();
+        
+        const tx = database.transaction("inventory", "readonly");
+        const store = tx.objectStore("inventory");
+        const index = store.index("date");
+        const request = index.getAll(date);
+
+        request.onsuccess = async () => {
+            const items = request.result || [];
+            const soldItems = items.filter(item => item.isSold);
+
+            if (soldItems.length === 0) {
+                alert("ไม่มีสินค้าที่ขายแล้วให้ลบในวันที่เลือกค่ะ");
+                return;
+            }
+
+            if (confirm(`คุณต้องการลบสินค้าที่ขายแล้วทั้งหมดจำนวน ${soldItems.length} ชิ้น ของวันที่เลือก ใช่ไหมคะ?`)) {
+                const deleteTx = database.transaction("inventory", "readwrite");
+                const deleteStore = deleteTx.objectStore("inventory");
+
+                soldItems.forEach(item => {
+                    deleteStore.delete(item.id);
+                });
+
+                deleteTx.oncomplete = () => {
+                    alert("ลบสินค้าที่ขายแล้วเรียบร้อยค่ะ");
+                    loadData(true);
+                };
+            }
+        };
     }
 
     async function exportData() {
@@ -387,7 +426,9 @@
         reader.readAsText(file);
     }
 
-    async function loadData() {
+    async function loadData(keepScroll = false) {
+        const scrollPos = window.scrollY; // บันทึกตำแหน่งแนวตั้งก่อนอัปเดต
+
         const date = getSelectedDate();
         const container = document.getElementById('categoryContainer');
         container.innerHTML = '';
@@ -397,8 +438,6 @@
 
         const tx = database.transaction("inventory", "readonly");
         const store = tx.objectStore("inventory");
-        
-        // แก้ไขจุดนี้: ใช้ store.index("date") แทน store.getIndex("date")
         const index = store.index("date");
         const request = index.getAll(date);
 
@@ -466,6 +505,11 @@
             document.getElementById('totalSales').innerText = `${sales.toLocaleString()} ฿`;
             document.getElementById('totalCost').innerText = `${costs.toLocaleString()} ฿`;
             document.getElementById('totalProfit').innerText = `${(sales - costs).toLocaleString()} ฿`;
+
+            // หากมีการส่งคำสั่งรักษาตำแหน่ง สกอร์ลจะอยู่ที่เดิมทันที
+            if (keepScroll) {
+                window.scrollTo(0, scrollPos);
+            }
         };
     }
 
