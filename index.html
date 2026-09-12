@@ -144,15 +144,18 @@
 </div>
 
 <script>
+    let currentFilter = 'all';
+    let db = null;
+
+    // 1. ตั้งค่าวันที่ปัจจุบันเสมอ
     const today = new Date();
     const todayFormatted = today.toISOString().split('T')[0];
     document.getElementById('selectDate').value = todayFormatted;
 
-    let currentFilter = 'all';
-    let db = null;
-
+    // 2. ฟังก์ชันเปิด Database
     function initDB() {
         return new Promise((resolve, reject) => {
+            if (db) return resolve(db);
             const request = indexedDB.open("Out2FitGithubDB", 1);
             request.onupgradeneeded = (e) => {
                 const database = e.target.result;
@@ -170,13 +173,6 @@
                 reject(e);
             };
         });
-    }
-
-    async function getDB() {
-        if (!db) {
-            await initDB();
-        }
-        return db;
     }
 
     function getSelectedDate() {
@@ -267,7 +263,7 @@
         addBtn.innerText = "กำลังบันทึกรูปภาพ...";
 
         try {
-            const database = await getDB();
+            const database = await initDB();
             const base64Image = await processImageFile(file);
 
             const selectCategory = document.getElementById('itemCategorySelect').value;
@@ -287,24 +283,20 @@
                 isSold: false
             };
 
-            // ใช้ Promise ห่อ Transaction เพื่อการรอนิรภัย
             await new Promise((resolve, reject) => {
                 const tx = database.transaction("inventory", "readwrite");
                 const store = tx.objectStore("inventory");
                 store.add(newItem);
-
                 tx.oncomplete = () => resolve();
                 tx.onerror = (e) => reject(e.target.error);
             });
 
-            // เคลียร์ค่าในฟอร์ม
             fileInput.value = '';
             document.getElementById('itemPrice').value = '';
             document.getElementById('itemCost').value = '';
             document.getElementById('itemCategoryCustom').value = '';
             document.getElementById('previewContainer').style.display = 'none';
 
-            // โหลดรายการสินค้าใหม่ทันทีหลังบันทึกเสร็จสมบูรณ์
             await loadData();
 
         } catch (err) {
@@ -316,7 +308,7 @@
     }
 
     async function toggleSold(id) {
-        const database = await getDB();
+        const database = await initDB();
         await new Promise((resolve) => {
             const tx = database.transaction("inventory", "readwrite");
             const store = tx.objectStore("inventory");
@@ -337,7 +329,7 @@
     async function deleteItem(id, event) {
         event.stopPropagation();
         if (confirm("ต้องการลบสินค้านี้ใช่ไหมคะ?")) {
-            const database = await getDB();
+            const database = await initDB();
             await new Promise((resolve) => {
                 const tx = database.transaction("inventory", "readwrite");
                 const store = tx.objectStore("inventory");
@@ -349,7 +341,7 @@
     }
 
     async function exportData() {
-        const database = await getDB();
+        const database = await initDB();
         const tx = database.transaction("inventory", "readonly");
         const store = tx.objectStore("inventory");
         const req = store.getAll();
@@ -372,7 +364,7 @@
 
     async function importData(event) {
         const file = event.target.files[0];
-        const database = await getDB();
+        const database = await initDB();
         if (!file || !database) return;
 
         const reader = new FileReader();
@@ -400,12 +392,14 @@
         const container = document.getElementById('categoryContainer');
         container.innerHTML = '';
 
-        const database = await getDB();
+        const database = await initDB();
         if (!database) return;
 
         const tx = database.transaction("inventory", "readonly");
         const store = tx.objectStore("inventory");
-        const index = store.getIndex("date");
+        
+        // แก้ไขจุดนี้: ใช้ store.index("date") แทน store.getIndex("date")
+        const index = store.index("date");
         const request = index.getAll(date);
 
         request.onsuccess = () => {
@@ -475,8 +469,10 @@
         };
     }
 
-    // เริ่มต้นทำงาน
-    initDB().then(() => loadData());
+    // เริ่มทำงานเมื่อเปิดหน้าเว็บทันที
+    window.addEventListener('DOMContentLoaded', () => {
+        initDB().then(() => loadData());
+    });
 </script>
 
 </body>
