@@ -55,12 +55,22 @@
         
         .item-card.sold { border-color: #dc3545; opacity: 0.5; }
         .item-card.sold::after {
-            content: "ขายแล้ว ❌"; position: absolute; top: 45%; left: 50%;
+            content: "ขายแล้ว ❌"; position: absolute; top: 40%; left: 50%;
             transform: translate(-50%, -50%); background: #dc3545; color: white;
             padding: 5px 10px; border-radius: 6px; font-weight: bold; font-size: 0.85em; white-space: nowrap;
         }
 
-        .delete-btn { background: #dc3545; color: white; border: none; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; margin-top: 5px; cursor: pointer; }
+        .action-btns { display: flex; gap: 5px; justify-content: center; margin-top: 6px; }
+        .edit-btn { background: #ffc107; color: #212529; border: none; padding: 3px 8px; border-radius: 4px; font-size: 0.75em; cursor: pointer; font-weight: 600; }
+        .delete-btn { background: #dc3545; color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 0.75em; cursor: pointer; }
+
+        /* Modal สำหรับแก้ไขสินค้า */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; padding: 25px; border-radius: 16px; width: 90%; max-width: 420px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .modal-content h3 { margin-top: 0; margin-bottom: 15px; }
+        .modal-content label { display: block; margin-top: 10px; font-size: 0.85em; color: #555; }
+        .modal-content input, .modal-content select { width: 100%; margin-top: 4px; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
     </style>
 </head>
 <body>
@@ -78,15 +88,10 @@
     </div>
 
     <div class="card">
-        <h2>📅 เลือกวันที่ไลฟ์สด Out2Fit</h2>
-        <input type="date" id="selectDate" onchange="loadData()" style="font-size: 1.1em;">
-    </div>
-
-    <div class="card">
-        <h3>📊 สรุปยอดประจำวันที่เลือก</h3>
+        <h3>📊 สรุปยอดขายรวมทั้งหมด</h3>
         <div class="summary-grid">
             <div class="stat-card sales">
-                <h4>ยอดขายรวม</h4>
+                <h4>ยอดขายรวมทั้งหมด</h4>
                 <h2 id="totalSales">0 ฿</h2>
             </div>
             <div class="stat-card cost">
@@ -132,7 +137,7 @@
 
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-            <h3 style="margin: 0;">🛍️ คลังสินค้า (กดที่รูปเพื่อขายออก / คิดเงิน)</h3>
+            <h3 style="margin: 0;">🛍️ คลังสินค้าทั้งหมด (กดที่รูปเพื่อขายออก / คิดเงิน)</h3>
             
             <div class="filter-group">
                 <button class="filter-btn active" id="filter-all" onclick="setFilter('all')">ทั้งหมด</button>
@@ -147,16 +152,36 @@
 
 </div>
 
+<!-- Modal สำหรับแก้ไขสินค้า -->
+<div class="modal-overlay" id="editModal">
+    <div class="modal-content">
+        <h3>✏️ แก้ไขข้อมูลสินค้า</h3>
+        <input type="hidden" id="editItemId">
+        
+        <label>เปลี่ยนรูปภาพ (ปล่อยว่างไว้ถ้าไม่ต้องการเปลี่ยน):</label>
+        <input type="file" id="editImgInput" accept="image/*">
+
+        <label>หมวดหมู่:</label>
+        <input type="text" id="editCategoryInput" placeholder="ระบุหมวดหมู่">
+
+        <label>ราคาขาย (บาท):</label>
+        <input type="number" id="editPriceInput" placeholder="ราคาขาย">
+
+        <label>ต้นทุน (บาท):</label>
+        <input type="number" id="editCostInput" placeholder="ต้นทุน">
+
+        <div class="modal-actions">
+            <button type="button" style="background:#6c757d;" onclick="closeEditModal()">ยกเลิก</button>
+            <button type="button" class="btn-success" onclick="saveEditItem()">บันทึกการแก้ไข</button>
+        </div>
+    </div>
+</div>
+
 <script>
     let currentFilter = 'all';
     let db = null;
 
-    // 1. ตั้งค่าวันที่ปัจจุบันเสมอ
-    const today = new Date();
-    const todayFormatted = today.toISOString().split('T')[0];
-    document.getElementById('selectDate').value = todayFormatted;
-
-    // 2. ฟังก์ชันเปิด Database
+    // 1. ฟังก์ชันเปิด Database
     function initDB() {
         return new Promise((resolve, reject) => {
             if (db) return resolve(db);
@@ -177,10 +202,6 @@
                 reject(e);
             };
         });
-    }
-
-    function getSelectedDate() {
-        return document.getElementById('selectDate').value;
     }
 
     function toggleCustomCategory() {
@@ -257,12 +278,6 @@
             return;
         }
 
-        const date = getSelectedDate();
-        if (!date) {
-            alert("กรุณาเลือกวันที่ด้วยค่ะ");
-            return;
-        }
-
         addBtn.disabled = true;
         addBtn.innerText = "กำลังบันทึกรูปภาพ...";
 
@@ -279,7 +294,7 @@
 
             const newItem = {
                 id: Date.now(),
-                date: date,
+                date: new Date().toISOString().split('T')[0],
                 img: base64Image,
                 category: category,
                 price: price,
@@ -327,7 +342,7 @@
             };
             tx.oncomplete = () => resolve();
         });
-        loadData(true); // ส่ง true เพื่อรักษารักษาตำแหน่ง Scroll
+        loadData(true);
     }
 
     async function deleteItem(id, event) {
@@ -344,26 +359,80 @@
         }
     }
 
-    // ฟังก์ชันลบสินค้าที่ขายแล้วทั้งหมดเฉพาะของวันที่เลือก
-    async function deleteAllSoldItems() {
-        const date = getSelectedDate();
+    // ฟังก์ชันเปิด Modal แก้ไขข้อมูล
+    async function openEditModal(id, event) {
+        event.stopPropagation();
         const database = await initDB();
-        
         const tx = database.transaction("inventory", "readonly");
         const store = tx.objectStore("inventory");
-        const index = store.index("date");
-        const request = index.getAll(date);
+        const request = store.get(id);
+
+        request.onsuccess = () => {
+            const item = request.result;
+            if (item) {
+                document.getElementById('editItemId').value = item.id;
+                document.getElementById('editCategoryInput').value = item.category;
+                document.getElementById('editPriceInput').value = item.price;
+                document.getElementById('editCostInput').value = item.cost;
+                document.getElementById('editImgInput').value = '';
+                document.getElementById('editModal').style.display = 'flex';
+            }
+        };
+    }
+
+    function closeEditModal() {
+        document.getElementById('editModal').style.display = 'none';
+    }
+
+    async function saveEditItem() {
+        const id = parseInt(document.getElementById('editItemId').value);
+        const category = document.getElementById('editCategoryInput').value.trim() || 'หมวดอื่นๆ';
+        const price = parseFloat(document.getElementById('editPriceInput').value) || 0;
+        const cost = parseFloat(document.getElementById('editCostInput').value) || 0;
+        const imgFile = document.getElementById('editImgInput').files[0];
+
+        const database = await initDB();
+        const tx = database.transaction("inventory", "readwrite");
+        const store = tx.objectStore("inventory");
+        const request = store.get(id);
+
+        request.onsuccess = async () => {
+            const item = request.result;
+            if (item) {
+                item.category = category;
+                item.price = price;
+                item.cost = cost;
+
+                if (imgFile) {
+                    item.img = await processImageFile(imgFile);
+                }
+
+                store.put(item);
+            }
+        };
+
+        tx.oncomplete = () => {
+            closeEditModal();
+            loadData(true);
+        };
+    }
+
+    async function deleteAllSoldItems() {
+        const database = await initDB();
+        const tx = database.transaction("inventory", "readonly");
+        const store = tx.objectStore("inventory");
+        const request = store.getAll();
 
         request.onsuccess = async () => {
             const items = request.result || [];
             const soldItems = items.filter(item => item.isSold);
 
             if (soldItems.length === 0) {
-                alert("ไม่มีสินค้าที่ขายแล้วให้ลบในวันที่เลือกค่ะ");
+                alert("ไม่มีสินค้าที่ขายแล้วให้ลบในระบบค่ะ");
                 return;
             }
 
-            if (confirm(`คุณต้องการลบสินค้าที่ขายแล้วทั้งหมดจำนวน ${soldItems.length} ชิ้น ของวันที่เลือก ใช่ไหมคะ?`)) {
+            if (confirm(`คุณต้องการลบสินค้าที่ขายแล้วทั้งหมดจำนวน ${soldItems.length} ชิ้น ใช่ไหมคะ?`)) {
                 const deleteTx = database.transaction("inventory", "readwrite");
                 const deleteStore = deleteTx.objectStore("inventory");
 
@@ -393,7 +462,7 @@
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data));
             const downloadAnchor = document.createElement('a');
             downloadAnchor.setAttribute("href", dataStr);
-            downloadAnchor.setAttribute("download", `out2fit_backup_${getSelectedDate()}.json`);
+            downloadAnchor.setAttribute("download", `out2fit_backup_all.json`);
             document.body.appendChild(downloadAnchor);
             downloadAnchor.click();
             downloadAnchor.remove();
@@ -427,9 +496,8 @@
     }
 
     async function loadData(keepScroll = false) {
-        const scrollPos = window.scrollY; // บันทึกตำแหน่งแนวตั้งก่อนอัปเดต
+        const scrollPos = window.scrollY;
 
-        const date = getSelectedDate();
         const container = document.getElementById('categoryContainer');
         container.innerHTML = '';
 
@@ -438,8 +506,7 @@
 
         const tx = database.transaction("inventory", "readonly");
         const store = tx.objectStore("inventory");
-        const index = store.index("date");
-        const request = index.getAll(date);
+        const request = store.getAll(); // ดึงข้อมูลทั้งหมดโดยไม่กรองวันที่
 
         request.onsuccess = () => {
             const items = request.result || [];
@@ -467,7 +534,7 @@
 
             if (Object.keys(categories).length === 0) {
                 container.innerHTML = `<p style="text-align:center; color:#999; padding:30px;">
-                    ${items.length === 0 ? 'ยังไม่มีสินค้าในวันที่เลือก กดเพิ่มสินค้าด้านบนได้เลยค่ะ ✨' : 'ไม่พบสินค้าตามสถานะที่เลือกดูค่ะ'}
+                    ${items.length === 0 ? 'ยังไม่มีสินค้าในระบบ กดเพิ่มสินค้าด้านบนได้เลยค่ะ ✨' : 'ไม่พบสินค้าตามสถานะที่เลือกดูค่ะ'}
                 </p>`;
             } else {
                 const sortedCategories = Object.keys(categories).sort((a, b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'}));
@@ -492,7 +559,10 @@
                             <div class="item-info">
                                 <div class="item-price">${item.price.toLocaleString()} ฿</div>
                                 <div class="item-cost">ทุน: ${item.cost.toLocaleString()} ฿</div>
-                                <button class="delete-btn" onclick="deleteItem(${item.id}, event)">ลบ</button>
+                                <div class="action-btns">
+                                    <button class="edit-btn" onclick="openEditModal(${item.id}, event)">✏️ แก้ไข</button>
+                                    <button class="delete-btn" onclick="deleteItem(${item.id}, event)">ลบ</button>
+                                </div>
                             </div>
                         `;
                         grid.appendChild(card);
@@ -506,14 +576,12 @@
             document.getElementById('totalCost').innerText = `${costs.toLocaleString()} ฿`;
             document.getElementById('totalProfit').innerText = `${(sales - costs).toLocaleString()} ฿`;
 
-            // หากมีการส่งคำสั่งรักษาตำแหน่ง สกอร์ลจะอยู่ที่เดิมทันที
             if (keepScroll) {
                 window.scrollTo(0, scrollPos);
             }
         };
     }
 
-    // เริ่มทำงานเมื่อเปิดหน้าเว็บทันที
     window.addEventListener('DOMContentLoaded', () => {
         initDB().then(() => loadData());
     });
